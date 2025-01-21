@@ -1,47 +1,41 @@
 #!/bin/bash
 
-echo "🚀 Starting PropExchange Development Environment..."
+# Store the root directory
+ROOT_DIR=$(pwd)
 
-# Check if PostgreSQL is running
-echo "📊 Checking PostgreSQL..."
-pg_isready -h localhost -p 5432
+echo "🚀 Starting Development Environment..."
 
-# Create database if it doesn't exist
-echo "🗄️  Setting up database..."
-psql -h localhost -U postgres -c "CREATE DATABASE propexchange;" 2>/dev/null || true
-
-# Activate virtual environment if it exists, create if it doesn't
-if [ ! -d "venv" ]; then
-    python3 -m venv venv
+# Install backend dependencies if not already installed
+if [ ! -d ".venv" ]; then
+    echo "📦 Installing backend dependencies..."
+    python3.11 -m venv .venv
+    source .venv/bin/activate
+    pip install -r backend/requirements.txt
+else
+    source .venv/bin/activate
 fi
-source venv/bin/activate
 
-# Install backend dependencies
-echo "📦 Installing backend dependencies..."
-pip install -r requirements.txt
+# Add the current directory to PYTHONPATH
+export PYTHONPATH=$PYTHONPATH:$(pwd)
 
-# Run database migrations
-echo "🔄 Running database migrations..."
-cd backend && alembic upgrade head && cd ..
+# Install frontend dependencies if not already installed
+echo "📦 Installing frontend dependencies..."
+cd "$ROOT_DIR/frontend" && npm install --legacy-peer-deps
+cd "$ROOT_DIR"
 
 # Start backend server
 echo "🌐 Starting backend server..."
-cd backend && uvicorn app.main:app --reload &
-cd ..
-
-# Install frontend dependencies
-echo "📦 Installing frontend dependencies..."
-cd frontend && npm install
+cd "$ROOT_DIR" && uvicorn backend.main:app --reload &
+cd "$ROOT_DIR"
 
 # Start frontend server
 echo "🌐 Starting frontend server..."
-npm run dev &
-cd ..
+cd "$ROOT_DIR/frontend" && npm run dev &
+cd "$ROOT_DIR"
 
 echo "✨ Development environment is ready!"
 echo "📱 Frontend: http://localhost:3000"
 echo "🔌 Backend: http://localhost:8000"
-echo "📚 API Docs: http://localhost:8000/docs"
 
 # Wait for all background processes
 wait 

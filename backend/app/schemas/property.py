@@ -23,8 +23,11 @@ class PropertyUpdate(PropertyBase):
 class Property(PropertyBase):
     id: int
     owner_id: int
-    created_at: datetime
-    updated_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     class Config:
-        from_attributes = True 
+        from_attributes = True
+        json_encoders = {
+            datetime: lambda dt: dt.isoformat() if dt else None
+        } 

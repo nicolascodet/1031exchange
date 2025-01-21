@@ -1,9 +1,11 @@
-from typing import Any, List
+from typing import Any, List, Tuple
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from pydantic import BaseModel
 
 from app import crud, models, schemas
 from app.api import deps
+from app.matching.property_matcher import PropertyMatcher
 
 router = APIRouter()
 
@@ -85,4 +87,74 @@ def delete_property(
     if not crud.user.is_superuser(current_user) and (property.owner_id != current_user.id):
         raise HTTPException(status_code=400, detail="Not enough permissions")
     property = crud.property.remove(db=db, id=property_id)
-    return property 
+    return property
+
+class PropertyMatch(BaseModel):
+    property: schemas.Property
+    match_score: float
+
+class PropertyChain(BaseModel):
+    properties: List[PropertyMatch]
+    average_score: float
+
+@router.get("/{property_id}/matches", response_model=List[PropertyMatch])
+def find_matching_properties(
+    *,
+    db: Session = Depends(deps.get_db),
+    property_id: int,
+    min_score: float = 0.6,
+    limit: int = 10,
+    current_user: models.User = Depends(deps.get_current_active_user),
+) -> Any:
+    """
+    Find matching properties for a given property based on advanced matching criteria.
+    """
+    property = crud.property.get(db=db, id=property_id)
+    if not property:
+        raise HTTPException(status_code=404, detail="Property not found")
+
+    matches = PropertyMatcher.find_matching_properties(
+        db=db,
+        source_property=property,
+        min_score=min_score,
+        limit=limit
+    )
+
+    return [
+        PropertyMatch(property=prop, match_score=score)
+        for prop, score in matches
+    ]
+
+@router.get("/{property_id}/exchange-chains", response_model=List[PropertyChain])
+def find_exchange_chains(
+    *,
+    db: Session = Depends(deps.get_db),
+    property_id: int,
+    max_chain_length: int = 3,
+    min_score: float = 0.6,
+    current_user: models.User = Depends(deps.get_current_active_user),
+) -> Any:
+    """
+    Identify potential exchange chains for a given property.
+    """
+    property = crud.property.get(db=db, id=property_id)
+    if not property:
+        raise HTTPException(status_code=404, detail="Property not found")
+
+    chains = PropertyMatcher.identify_exchange_chains(
+        db=db,
+        source_property=property,
+        max_chain_length=max_chain_length,
+        min_score=min_score
+    )
+
+    return [
+        PropertyChain(
+            properties=[
+                PropertyMatch(property=prop, match_score=score)
+                for prop, score in chain
+            ],
+            average_score=sum(score for _, score in chain) / len(chain)
+        )
+        for chain in chains
+    ] 
